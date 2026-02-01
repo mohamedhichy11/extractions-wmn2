@@ -462,7 +462,7 @@ async function fetchEmails(
               let preview = '';
               try {
                 const parsed = await simpleParser(emailBuffer);
-                preview = parsed.text?.substring(0, 200) || parsed.html?.replace(/<[^>]*>/g, '').substring(0, 200) || '';
+                preview = parsed.text?.substring(0, 200) || (parsed.html || "").replace(/<[^>]*>/g, "").replace(/<[^>]*>/g, '').substring(0, 200) || '';
               } catch (parseError) {
                 preview = 'Unable to parse email content';
               }
