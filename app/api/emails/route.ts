@@ -25,6 +25,7 @@ interface EmailData {
   sender?: string;
   listUnsubscribe?: string;
   mimeVersion?: string;
+  returnPath?: string; // Added Return-Path field
 }
 
 interface RequestBody {
@@ -115,6 +116,25 @@ function extractFromInfo(fromHeader: string): { email: string; domain: string; n
     };
   } catch {
     return { email: '', domain: '', name: '' };
+  }
+}
+
+// New function to extract Return-Path information
+function extractReturnPath(returnPathHeader: string): string {
+  try {
+    if (!returnPathHeader) return '';
+    
+    // Extract email from Return-Path (usually in format <email@domain.com>)
+    const returnPathMatch = returnPathHeader.match(/<([^>]+)>/);
+    if (returnPathMatch && returnPathMatch[1]) {
+      return returnPathMatch[1].toLowerCase().trim();
+    }
+    
+    // If no angle brackets, try to extract email directly
+    const emailMatch = returnPathHeader.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    return emailMatch ? emailMatch[0].toLowerCase().trim() : returnPathHeader.trim();
+  } catch {
+    return '';
   }
 }
 
@@ -432,8 +452,13 @@ async function fetchEmails(
               const toHeader = headers.to ? headers.to.join(', ') : '';
               const subject = getHeaderValue(headers, 'subject') || '(No Subject)';
               
+              // Extract Return-Path
+              const returnPathHeader = getHeaderValue(headers, 'return-path');
+              const returnPath = extractReturnPath(returnPathHeader);
+              
               console.log('📨 Subject:', subject);
               console.log('📤 From:', fromHeader);
+              console.log('↩️ Return-Path:', returnPathHeader, '→', returnPath);
               
               const { email: fromEmailAddr, domain: fromDomainAddr, name: fromNameStr } = extractFromInfo(fromHeader);
               const toEmails = extractToInfo(toHeader);
@@ -476,7 +501,8 @@ async function fetchEmails(
                   subject.toLowerCase().includes(searchLower) ||
                   fromHeader.toLowerCase().includes(searchLower) ||
                   fromEmailAddr.toLowerCase().includes(searchLower) ||
-                  preview.toLowerCase().includes(searchLower);
+                  preview.toLowerCase().includes(searchLower) ||
+                  returnPath.toLowerCase().includes(searchLower); // Also search in return path
               }
               
               if (fromDomain && fromDomainAddr.toLowerCase() !== fromDomain.toLowerCase()) {
@@ -514,7 +540,8 @@ async function fetchEmails(
                   received,
                   sender,
                   listUnsubscribe,
-                  mimeVersion
+                  mimeVersion,
+                  returnPath: returnPath // Add Return-Path to the email data
                 } as EmailData);
               }
 
