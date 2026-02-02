@@ -21,6 +21,7 @@ interface Email {
   messageId?: string;
   received?: string;
   sender?: string;
+  returnPath?: string;
   listUnsubscribe?: string;
   mimeVersion?: string;
 }
@@ -31,10 +32,14 @@ interface ColumnConfig {
   enabled: boolean;
 }
 
+type SortField = 'date' | 'spfStatus' | 'dkimStatus' | 'dmarcStatus';
+type SortOrder = 'ASC' | 'DESC';
+
 interface EmailTableProps {
   emails: Email[];
-  sortOrder: 'ASC' | 'DESC';
-  onSort: () => void;
+  sortField: SortField;
+  sortOrder: SortOrder;
+  onSort: (field: SortField) => void;
   selectedEmails: Set<string>;
   onSelectEmail: (uid: string) => void;
   visibleColumns: ColumnConfig[];
@@ -43,6 +48,7 @@ interface EmailTableProps {
 
 export default function EmailTableEnhanced({ 
   emails, 
+  sortField,
   sortOrder, 
   onSort,
   selectedEmails,
@@ -61,6 +67,26 @@ export default function EmailTableEnhanced({
   const isColumnVisible = (columnId: string) => {
     const column = visibleColumns.find(col => col.id === columnId);
     return column ? column.enabled : false;
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return (
+        <svg className="w-4 h-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+        </svg>
+      );
+    }
+    
+    return sortOrder === 'ASC' ? (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+      </svg>
+    ) : (
+      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    );
   };
 
   return (
@@ -187,52 +213,88 @@ export default function EmailTableEnhanced({
             )}
             
             {isColumnVisible('spfStatus') && (
-              <th className="px-6 py-4 text-left">
+              <th 
+                className={`px-6 py-4 text-left cursor-pointer transition-colors group ${
+                  darkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-200'
+                }`}
+                onClick={() => onSort('spfStatus')}
+              >
                 <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    darkMode ? 'bg-green-900/50' : 'bg-green-100'
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                    darkMode 
+                      ? 'bg-green-900/50 group-hover:bg-green-800/50' 
+                      : 'bg-green-100 group-hover:bg-green-200'
                   }`}>
                     <svg className={`w-4 h-4 ${darkMode ? 'text-green-400' : 'text-green-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                     </svg>
                   </div>
-                  <span className={`text-xs font-bold uppercase tracking-wider ${
+                  <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1 ${
                     darkMode ? 'text-gray-300' : 'text-slate-700'
-                  }`}>SPF Status</span>
+                  }`}>
+                    SPF Status
+                    <span className="transition-transform group-hover:scale-125">
+                      {getSortIcon('spfStatus')}
+                    </span>
+                  </span>
                 </div>
               </th>
             )}
             
             {isColumnVisible('dkimStatus') && (
-              <th className="px-6 py-4 text-left">
+              <th 
+                className={`px-6 py-4 text-left cursor-pointer transition-colors group ${
+                  darkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-200'
+                }`}
+                onClick={() => onSort('dkimStatus')}
+              >
                 <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    darkMode ? 'bg-blue-900/50' : 'bg-blue-100'
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                    darkMode 
+                      ? 'bg-blue-900/50 group-hover:bg-blue-800/50' 
+                      : 'bg-blue-100 group-hover:bg-blue-200'
                   }`}>
                     <svg className={`w-4 h-4 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                     </svg>
                   </div>
-                  <span className={`text-xs font-bold uppercase tracking-wider ${
+                  <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1 ${
                     darkMode ? 'text-gray-300' : 'text-slate-700'
-                  }`}>DKIM Status</span>
+                  }`}>
+                    DKIM Status
+                    <span className="transition-transform group-hover:scale-125">
+                      {getSortIcon('dkimStatus')}
+                    </span>
+                  </span>
                 </div>
               </th>
             )}
             
             {isColumnVisible('dmarcStatus') && (
-              <th className="px-6 py-4 text-left">
+              <th 
+                className={`px-6 py-4 text-left cursor-pointer transition-colors group ${
+                  darkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-200'
+                }`}
+                onClick={() => onSort('dmarcStatus')}
+              >
                 <div className="flex items-center gap-2">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                    darkMode ? 'bg-purple-900/50' : 'bg-purple-100'
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                    darkMode 
+                      ? 'bg-purple-900/50 group-hover:bg-purple-800/50' 
+                      : 'bg-purple-100 group-hover:bg-purple-200'
                   }`}>
                     <svg className={`w-4 h-4 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                     </svg>
                   </div>
-                  <span className={`text-xs font-bold uppercase tracking-wider ${
+                  <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1 ${
                     darkMode ? 'text-gray-300' : 'text-slate-700'
-                  }`}>DMARC Status</span>
+                  }`}>
+                    DMARC Status
+                    <span className="transition-transform group-hover:scale-125">
+                      {getSortIcon('dmarcStatus')}
+                    </span>
+                  </span>
                 </div>
               </th>
             )}
@@ -339,6 +401,23 @@ export default function EmailTableEnhanced({
               </th>
             )}
             
+            {isColumnVisible('returnPath') && (
+              <th className="px-6 py-4 text-left">
+                <div className="flex items-center gap-2">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    darkMode ? 'bg-indigo-900/50' : 'bg-indigo-100'
+                  }`}>
+                    <svg className={`w-4 h-4 ${darkMode ? 'text-indigo-400' : 'text-indigo-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                    </svg>
+                  </div>
+                  <span className={`text-xs font-bold uppercase tracking-wider ${
+                    darkMode ? 'text-gray-300' : 'text-slate-700'
+                  }`}>Return-Path</span>
+                </div>
+              </th>
+            )}
+            
             {isColumnVisible('listUnsubscribe') && (
               <th className="px-6 py-4 text-left">
                 <div className="flex items-center gap-2">
@@ -413,7 +492,7 @@ export default function EmailTableEnhanced({
                 className={`px-6 py-4 text-left cursor-pointer transition-colors group ${
                   darkMode ? 'hover:bg-gray-700' : 'hover:bg-slate-200'
                 }`}
-                onClick={onSort}
+                onClick={() => onSort('date')}
               >
                 <div className="flex items-center gap-2">
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
@@ -429,8 +508,8 @@ export default function EmailTableEnhanced({
                     darkMode ? 'text-gray-300' : 'text-slate-700'
                   }`}>
                     Date
-                    <span className="text-sm transition-transform group-hover:scale-125">
-                      {sortOrder === 'ASC' ? '↑' : '↓'}
+                    <span className="transition-transform group-hover:scale-125">
+                      {getSortIcon('date')}
                     </span>
                   </span>
                 </div>
@@ -805,6 +884,28 @@ export default function EmailTableEnhanced({
                         darkMode ? 'bg-gray-900 text-white' : 'bg-slate-900 text-white'
                       }`}>
                         {email.sender}
+                        <div className={`absolute -bottom-1 left-4 w-2 h-2 transform rotate-45 ${
+                          darkMode ? 'bg-gray-900' : 'bg-slate-900'
+                        }`}></div>
+                      </div>
+                    )}
+                  </div>
+                </td>
+              )}
+              
+              {isColumnVisible('returnPath') && (
+                <td className="px-6 py-4">
+                  <div className="group relative">
+                    <span className={`text-sm truncate max-w-[150px] block ${
+                      darkMode ? 'text-gray-300' : 'text-gray-600'
+                    }`}>
+                      {email.returnPath || 'N/A'}
+                    </span>
+                    {email.returnPath && (
+                      <div className={`hidden group-hover:block absolute z-20 text-xs px-3 py-2 rounded-lg shadow-xl -top-2 left-0 whitespace-nowrap ${
+                        darkMode ? 'bg-gray-900 text-white' : 'bg-slate-900 text-white'
+                      }`}>
+                        {email.returnPath}
                         <div className={`absolute -bottom-1 left-4 w-2 h-2 transform rotate-45 ${
                           darkMode ? 'bg-gray-900' : 'bg-slate-900'
                         }`}></div>
