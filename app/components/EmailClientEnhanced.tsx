@@ -3,6 +3,9 @@
 import { useState, useRef, useEffect } from 'react';
 import EmailTable from './EmailTableEnhanced';
 
+type SortField = 'date' | 'spfStatus' | 'dkimStatus' | 'dmarcStatus';
+type SortOrder = 'ASC' | 'DESC';
+
 interface Email {
   uid: string;
   subject: string;
@@ -24,6 +27,7 @@ interface Email {
   messageId?: string;
   received?: string;
   sender?: string;
+  returnPath?: string;
   listUnsubscribe?: string;
   mimeVersion?: string;
 }
@@ -43,7 +47,8 @@ export default function EmailClientEnhanced() {
   const [emails, setEmails] = useState<Email[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('DESC');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterFromDomain, setFilterFromDomain] = useState('');
   const [filterFromEmail, setFilterFromEmail] = useState('');
@@ -74,6 +79,7 @@ export default function EmailClientEnhanced() {
     { id: 'messageId', label: 'Message-ID', enabled: false },
     { id: 'received', label: 'Received', enabled: false },
     { id: 'sender', label: 'Sender', enabled: false },
+    { id: 'returnPath', label: 'Return-Path', enabled: false },
     { id: 'listUnsubscribe', label: 'List-Unsubscribe', enabled: false },
     { id: 'mimeVersion', label: 'MIME-Version', enabled: false },
     { id: 'date', label: 'Date', enabled: true },
@@ -220,15 +226,28 @@ export default function EmailClientEnhanced() {
     }
   };
 
-  const handleSortByDate = () => {
-    const newSortOrder = sortOrder === 'ASC' ? 'DESC' : 'ASC';
+  const handleSort = (field: SortField) => {
+    const newSortOrder = sortField === field && sortOrder === 'ASC' ? 'DESC' : 'ASC';
+    setSortField(field);
     setSortOrder(newSortOrder);
     
     if (emails.length > 0) {
       const sortedEmails = [...emails].sort((a, b) => {
-        const dateA = new Date(a.date.includes('/') ? a.date : new Date().toDateString() + ' ' + a.date).getTime();
-        const dateB = new Date(b.date.includes('/') ? b.date : new Date().toDateString() + ' ' + b.date).getTime();
-        return newSortOrder === 'ASC' ? dateA - dateB : dateB - dateA;
+        let valueA: any;
+        let valueB: any;
+
+        if (field === 'date') {
+          valueA = new Date(a.date.includes('/') ? a.date : new Date().toDateString() + ' ' + a.date).getTime();
+          valueB = new Date(b.date.includes('/') ? b.date : new Date().toDateString() + ' ' + b.date).getTime();
+        } else {
+          // For SPF, DKIM, DMARC - sort by status
+          valueA = a[field]?.toLowerCase() || 'zzz';
+          valueB = b[field]?.toLowerCase() || 'zzz';
+        }
+
+        if (valueA < valueB) return newSortOrder === 'ASC' ? -1 : 1;
+        if (valueA > valueB) return newSortOrder === 'ASC' ? 1 : -1;
+        return 0;
       });
       setEmails(sortedEmails);
     }
@@ -252,45 +271,26 @@ export default function EmailClientEnhanced() {
       });
   };
 
-  const handleCopyIPs = () => {
+  // Copy all IPs in current page
+  const handleCopyAllIPs = () => {
     const ips = emails
       .map(e => e.ip)
       .filter(ip => ip && ip !== 'N/A' && ip !== 'Unknown')
       .join('\n');
-    copyToClipboard(ips, 'IPs');
+    copyToClipboard(ips, 'All IPs');
   };
 
-  const handleCopyDomains = () => {
+  // Copy all domains in current page
+  const handleCopyAllDomains = () => {
     const domains = emails
       .map(e => e.fromDomain)
       .filter(d => d && d !== 'unknown')
       .join('\n');
-    copyToClipboard(domains, 'Domains');
+    copyToClipboard(domains, 'All Domains');
   };
 
-  const handleCopyFromDomain = () => {
-    const fromDomains = emails
-      .map(e => e.fromDomain)
-      .filter(d => d && d !== 'unknown')
-      .join('\n');
-    copyToClipboard(fromDomains, 'From Domains');
-  };
-
-  const handleCopyByDomain = () => {
-    if (!filterFromDomain) {
-      setCopyStatus('Please enter a domain in "From Domain" field first');
-      setTimeout(() => setCopyStatus(''), 3000);
-      return;
-    }
-    
-    const data = emails
-      .filter(e => e.fromDomain.toLowerCase() === filterFromDomain.toLowerCase())
-      .map(e => `${e.ip} - ${e.fromEmail} - ${e.date}`)
-      .join('\n');
-    copyToClipboard(data || `No emails from domain: ${filterFromDomain}`, 'Domain Data');
-  };
-
-  const handleCopyByIP = () => {
+  // Copy selected IPs
+  const handleCopySelectedIPs = () => {
     const selectedIPs = Array.from(selectedEmails)
       .map(uid => {
         const email = emails.find(e => e.uid === uid);
@@ -298,7 +298,71 @@ export default function EmailClientEnhanced() {
       })
       .filter(ip => ip && ip !== 'N/A' && ip !== 'Unknown')
       .join('\n');
-    copyToClipboard(selectedIPs || 'Select emails first to copy IPs', 'Selected IPs');
+    copyToClipboard(selectedIPs || 'No emails selected', 'Selected IPs');
+  };
+
+  // Copy selected domains
+  const handleCopySelectedDomains = () => {
+    const selectedDomains = Array.from(selectedEmails)
+      .map(uid => {
+        const email = emails.find(e => e.uid === uid);
+        return email ? email.fromDomain : '';
+      })
+      .filter(d => d && d !== 'unknown')
+      .join('\n');
+    copyToClipboard(selectedDomains || 'No emails selected', 'Selected Domains');
+  };
+
+  // Copy by domain - grouped format: domain: IP1, IP2
+  const handleCopyByDomain = () => {
+    if (!filterFromDomain && selectedEmails.size === 0) {
+      setCopyStatus('Please enter a domain in "From Domain" field or select emails first');
+      setTimeout(() => setCopyStatus(''), 3000);
+      return;
+    }
+
+    let relevantEmails = emails;
+    
+    if (filterFromDomain) {
+      relevantEmails = emails.filter(e => 
+        e.fromDomain.toLowerCase() === filterFromDomain.toLowerCase()
+      );
+    } else if (selectedEmails.size > 0) {
+      relevantEmails = emails.filter(e => selectedEmails.has(e.uid));
+    }
+
+    // Group IPs by domain
+    const domainMap = new Map<string, Set<string>>();
+    relevantEmails.forEach(e => {
+      if (e.fromDomain && e.fromDomain !== 'unknown' && e.ip && e.ip !== 'N/A' && e.ip !== 'Unknown') {
+        if (!domainMap.has(e.fromDomain)) {
+          domainMap.set(e.fromDomain, new Set());
+        }
+        domainMap.get(e.fromDomain)!.add(e.ip);
+      }
+    });
+
+    const result = Array.from(domainMap.entries())
+      .map(([domain, ips]) => `${domain}:\n${Array.from(ips).join('\n')}`)
+      .join('\n');
+
+    copyToClipboard(result || 'No data found', 'Domain-grouped Data');
+  };
+
+  // Copy by IP - format: IP:domain
+  const handleCopyByIP = () => {
+    let relevantEmails = emails;
+    
+    if (selectedEmails.size > 0) {
+      relevantEmails = emails.filter(e => selectedEmails.has(e.uid));
+    }
+
+    const result = relevantEmails
+      .filter(e => e.ip && e.ip !== 'N/A' && e.ip !== 'Unknown' && e.fromDomain && e.fromDomain !== 'unknown')
+      .map(e => `${e.ip}:${e.fromDomain}`)
+      .join('\n');
+
+    copyToClipboard(result || 'No data found', 'IP-grouped Data');
   };
 
   const toggleEmailSelection = (uid: string) => {
@@ -694,45 +758,12 @@ export default function EmailClientEnhanced() {
                       </button>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 gap-4">
                     <input
                       type="text"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       placeholder="🔍 Search emails..."
-                      className={`px-4 py-3 rounded-xl transition-all duration-300 shadow-sm ${
-                        darkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500' 
-                          : 'bg-white border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-transparent'
-                      } border focus:ring-2`}
-                    />
-                    <input
-                      type="text"
-                      value={filterFromDomain}
-                      onChange={(e) => setFilterFromDomain(e.target.value)}
-                      placeholder="From Domain (gmail.com)"
-                      className={`px-4 py-3 rounded-xl transition-all duration-300 shadow-sm ${
-                        darkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500' 
-                          : 'bg-white border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-transparent'
-                      } border focus:ring-2`}
-                    />
-                    <input
-                      type="text"
-                      value={filterFromEmail}
-                      onChange={(e) => setFilterFromEmail(e.target.value)}
-                      placeholder="From Email"
-                      className={`px-4 py-3 rounded-xl transition-all duration-300 shadow-sm ${
-                        darkMode 
-                          ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500' 
-                          : 'bg-white border-gray-300 text-gray-900 focus:ring-blue-500 focus:border-transparent'
-                      } border focus:ring-2`}
-                    />
-                    <input
-                      type="text"
-                      value={filterTo}
-                      onChange={(e) => setFilterTo(e.target.value)}
-                      placeholder="To Email"
                       className={`px-4 py-3 rounded-xl transition-all duration-300 shadow-sm ${
                         darkMode 
                           ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400 focus:ring-blue-500 focus:border-blue-500' 
@@ -798,21 +829,36 @@ export default function EmailClientEnhanced() {
                   </button>
 
                   <div className="flex flex-wrap gap-2 ml-auto">
-                    <button onClick={handleCopyIPs} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 shadow transform hover:scale-105 ${
-                      darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-slate-700 text-white hover:bg-slate-800'
+                    {/* Page Copy Buttons */}
+                    <button onClick={handleCopyAllIPs} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 shadow transform hover:scale-105 ${
+                      darkMode ? 'bg-emerald-900/50 text-emerald-300 hover:bg-emerald-800/50 border border-emerald-700' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                     }`}>
-                      Copy IPs
+                      Copy All IPs
                     </button>
-                    <button onClick={handleCopyDomains} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 shadow transform hover:scale-105 ${
-                      darkMode ? 'bg-gray-700 text-white hover:bg-gray-600' : 'bg-slate-700 text-white hover:bg-slate-800'
+                    <button onClick={handleCopyAllDomains} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 shadow transform hover:scale-105 ${
+                      darkMode ? 'bg-emerald-900/50 text-emerald-300 hover:bg-emerald-800/50 border border-emerald-700' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
                     }`}>
-                      Copy Domains
+                      Copy All Domains
                     </button>
-                    <button onClick={handleCopyByDomain} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-all duration-300 shadow transform hover:scale-105">
-                      By Domain
+                    
+                    {/* Selected Copy Buttons */}
+                    <button onClick={handleCopySelectedIPs} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 shadow transform hover:scale-105 ${
+                      darkMode ? 'bg-blue-900/50 text-blue-300 hover:bg-blue-800/50 border border-blue-700' : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
+                    }`}>
+                      Copy Selected IPs
                     </button>
-                    <button onClick={handleCopyByIP} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-all duration-300 shadow transform hover:scale-105">
-                      By IP
+                    <button onClick={handleCopySelectedDomains} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 shadow transform hover:scale-105 ${
+                      darkMode ? 'bg-blue-900/50 text-blue-300 hover:bg-blue-800/50 border border-blue-700' : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200'
+                    }`}>
+                      Copy Selected Domains
+                    </button>
+                    
+                    {/* Grouped Copy Buttons */}
+                    <button onClick={handleCopyByDomain} className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-all duration-300 shadow transform hover:scale-105">
+                      Copy by Domain
+                    </button>
+                    <button onClick={handleCopyByIP} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-all duration-300 shadow transform hover:scale-105">
+                      Copy by IP
                     </button>
                   </div>
                 </div>
@@ -897,14 +943,6 @@ export default function EmailClientEnhanced() {
                       >
                         {selectedEmails.size === emails.length ? '✗ Deselect All' : '✓ Select All'}
                       </button>
-                      
-                      <button
-                        onClick={handleSortByDate}
-                        className="px-4 py-2 bg-slate-600 text-white rounded-lg text-sm font-medium hover:bg-slate-500 transition-all duration-300 flex items-center gap-2 transform hover:scale-105"
-                      >
-                        <span>Sort by Date</span>
-                        <span className="text-lg">{sortOrder === 'ASC' ? '↑' : '↓'}</span>
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -912,8 +950,9 @@ export default function EmailClientEnhanced() {
                 <div className="p-6">
                   <EmailTable 
                     emails={emails} 
+                    sortField={sortField}
                     sortOrder={sortOrder} 
-                    onSort={handleSortByDate}
+                    onSort={handleSort}
                     selectedEmails={selectedEmails}
                     onSelectEmail={toggleEmailSelection}
                     visibleColumns={columns}
@@ -995,68 +1034,65 @@ export default function EmailClientEnhanced() {
       </div>
 
       {/* Footer */}
-    <footer
-  className={`mt-8 py-6 border-t transition-all duration-300 ${
-    darkMode ? 'border-gray-800 bg-gray-900' : 'border-gray-200 bg-white'
-  }`}
->
-  <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-    <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+      <footer
+        className={`mt-8 py-6 border-t transition-all duration-300 ${
+          darkMode ? 'border-gray-800 bg-gray-900' : 'border-gray-200 bg-white'
+        }`}
+      >
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            {/* Developer */}
+            <div className="text-center">
+              <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                Developed by
+              </p>
 
-      {/* Developer */}
-      <div className="text-center">
-        <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-          Developed by
-        </p>
+              <div className="flex items-center gap-2 mt-1 justify-center">
+                <div className="w-6 h-6 bg-gradient-to-br from-emerald-400 to-cyan-500 rounded-full flex items-center justify-center animate-pulse">
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
 
-        <div className="flex items-center gap-2 mt-1 justify-center">
-          <div className="w-6 h-6 bg-gradient-to-br from-emerald-400 to-cyan-500 rounded-full flex items-center justify-center animate-pulse">
-            <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-              <path
-                fillRule="evenodd"
-                d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                clipRule="evenodd"
-              />
-            </svg>
+                <p className="text-lg font-bold bg-gradient-to-r from-emerald-500 to-cyan-500 bg-clip-text text-transparent">
+                  Mohamed Hichy
+                </p>
+              </div>
+
+              {/* Telegram link */}
+              <a
+                href="https://t.me/Hichy33"
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`mt-2 inline-flex items-center gap-2 text-sm font-medium transition-colors ${
+                  darkMode
+                    ? 'text-cyan-400 hover:text-cyan-300'
+                    : 'text-cyan-600 hover:text-cyan-500'
+                }`}
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path d="M9.04 15.84 8.9 19.8c.51 0 .73-.22 1-.48l2.4-2.28 4.97 3.64c.91.5 1.56.24 1.8-.84l3.26-15.3c.33-1.54-.56-2.14-1.45-1.8L1.63 9.58c-1.5.58-1.48 1.42-.27 1.8l4.6 1.44L17.8 5.3c.56-.37 1.07-.17.65.2" />
+                </svg>
+                @Hichy33
+              </a>
+            </div>
+
+            {/* Copyright */}
+            <div className={`text-sm text-center ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              <p>© {new Date().getFullYear()} WMN2. All rights reserved.</p>
+              <p className="mt-1">Advanced Email Analytics Platform</p>
+            </div>
           </div>
-
-          <p className="text-lg font-bold bg-gradient-to-r from-emerald-500 to-cyan-500 bg-clip-text text-transparent">
-            Mohamed Hichy
-          </p>
         </div>
-
-        {/* Telegram link */}
-        <a
-          href="https://t.me/Hichy33"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`mt-2 inline-flex items-center gap-2 text-sm font-medium transition-colors ${
-            darkMode
-              ? 'text-cyan-400 hover:text-cyan-300'
-              : 'text-cyan-600 hover:text-cyan-500'
-          }`}
-        >
-          <svg
-            className="w-4 h-4"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path d="M9.04 15.84 8.9 19.8c.51 0 .73-.22 1-.48l2.4-2.28 4.97 3.64c.91.5 1.56.24 1.8-.84l3.26-15.3c.33-1.54-.56-2.14-1.45-1.8L1.63 9.58c-1.5.58-1.48 1.42-.27 1.8l4.6 1.44L17.8 5.3c.56-.37 1.07-.17.65.2" />
-          </svg>
-          @Hichy33
-        </a>
-      </div>
-
-      {/* Copyright */}
-      <div className={`text-sm text-center ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-        <p>© {new Date().getFullYear()} WMN2. All rights reserved.</p>
-        <p className="mt-1">Advanced Email Analytics Platform</p>
-      </div>
-
-    </div>
-  </div>
-</footer>
-
+      </footer>
     </div>
   );
 }
