@@ -41,7 +41,7 @@ interface EmailTableProps {
   sortOrder: SortOrder;
   onSort: (field: SortField) => void;
   selectedEmails: Set<string>;
-  onSelectEmail: (uid: string) => void;
+  onSelectEmail: (uid: string, index: number, event: React.MouseEvent) => void;
   visibleColumns: ColumnConfig[];
   darkMode?: boolean;
 }
@@ -532,7 +532,7 @@ export default function EmailTableEnhanced({
                   ? 'hover:bg-gray-700 hover:shadow-sm'
                   : 'hover:bg-slate-50 hover:shadow-sm'
               }`}
-              onClick={() => onSelectEmail(email.uid)}
+              onClick={(e) => onSelectEmail(email.uid, index, e)}
             >
               {isColumnVisible('checkbox') && (
                 <td className="px-4 py-4">
@@ -543,7 +543,7 @@ export default function EmailTableEnhanced({
                       onChange={() => {}}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onSelectEmail(email.uid);
+                        onSelectEmail(email.uid, index, e);
                       }}
                       className={`w-5 h-5 rounded-md border-2 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer transition-all ${
                         darkMode 
