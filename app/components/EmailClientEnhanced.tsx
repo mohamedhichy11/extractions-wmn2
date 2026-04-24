@@ -57,6 +57,7 @@ export default function EmailClientEnhanced() {
   const [copyStatus, setCopyStatus] = useState('');
   const [totalEmails, setTotalEmails] = useState(0);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showCredentials, setShowCredentials] = useState(true);
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const columnSelectorRef = useRef<HTMLDivElement>(null);
@@ -121,6 +122,7 @@ export default function EmailClientEnhanced() {
     const savedPassword = localStorage.getItem('gmail_password');
     if (savedEmail) setEmail(savedEmail);
     if (savedPassword) setAppPassword(savedPassword);
+    if (savedEmail && savedPassword) setShowCredentials(false);
 
     // Load saved column preferences
     const savedColumns = localStorage.getItem('email_columns');
@@ -369,34 +371,31 @@ export default function EmailClientEnhanced() {
 
   const toggleEmailSelection = (uid: string, index: number, event: React.MouseEvent) => {
     if (event.shiftKey && lastSelectedIndexRef.current !== null) {
-      // Shift+Click: select range between lastSelectedIndex and current index
+      // SHIFT → add range to selection, update anchor to current
       const start = Math.min(lastSelectedIndexRef.current, index);
       const end = Math.max(lastSelectedIndexRef.current, index);
       const newSelected = new Set(selectedEmails);
       for (let i = start; i <= end; i++) {
         newSelected.add(emails[i].uid);
       }
+      lastSelectedIndexRef.current = index;
       setSelectedEmails(newSelected);
     } else if (event.ctrlKey || event.metaKey) {
-      // Ctrl/Cmd+Click: toggle individual row without clearing others
+      // CTRL → toggle this row without clearing others
       const newSelected = new Set(selectedEmails);
       if (newSelected.has(uid)) {
         newSelected.delete(uid);
       } else {
         newSelected.add(uid);
       }
-      setSelectedEmails(newSelected);
       lastSelectedIndexRef.current = index;
+      setSelectedEmails(newSelected);
     } else {
-      // Plain click: select only this row (clear previous selection)
-      if (selectedEmails.size === 1 && selectedEmails.has(uid)) {
-        // Clicking an already-solo-selected row deselects it
-        setSelectedEmails(new Set());
-        lastSelectedIndexRef.current = null;
-      } else {
-        setSelectedEmails(new Set([uid]));
-        lastSelectedIndexRef.current = index;
-      }
+      // NORMAL CLICK → clear all, select only this row
+      const newSelected = new Set<string>();
+      newSelected.add(uid);
+      lastSelectedIndexRef.current = index;
+      setSelectedEmails(newSelected);
     }
   };
 
@@ -643,19 +642,37 @@ export default function EmailClientEnhanced() {
             <div className={`rounded-2xl shadow-xl border overflow-hidden transition-all duration-300 ${
               darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-100'
             }`}>
-              <div className="bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 px-6 py-4">
-                <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Configuration
-                </h2>
+              <div
+                className="bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 px-6 py-4 cursor-pointer select-none"
+                onClick={() => setShowCredentials(v => !v)}
+              >
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                    Configuration
+                  </h2>
+                  <div className="flex items-center gap-3">
+                    {!showCredentials && email && (
+                      <span className="text-blue-100 text-sm font-medium opacity-90 truncate max-w-[220px]">
+                        {email}
+                      </span>
+                    )}
+                    <svg
+                      className={`w-5 h-5 text-white transition-transform duration-200 ${showCredentials ? 'rotate-180' : ''}`}
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
+                </div>
               </div>
 
               <div className="p-6 space-y-6">
                 {/* Credentials */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {showCredentials && <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <div>
                     <label className={`block text-sm font-semibold mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                       Email Address
@@ -717,7 +734,7 @@ export default function EmailClientEnhanced() {
                       </a>
                     </p>
                   </div>
-                </div>
+                </div>}
 
                 {/* Filters & Column Selector */}
                 <div>
