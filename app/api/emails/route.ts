@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Imap from 'imap';
-import { simpleParser } from 'mailparser';
 
 interface EmailData {
   uid: string;
@@ -25,7 +24,7 @@ interface EmailData {
   sender?: string;
   listUnsubscribe?: string;
   mimeVersion?: string;
-  returnPath?: string; // Added Return-Path field
+  returnPath?: string;
 }
 
 interface RequestBody {
@@ -44,251 +43,25 @@ interface RequestBody {
 export async function POST(request: NextRequest) {
   try {
     const body: RequestBody = await request.json();
-    const { 
-      email, 
-      appPassword, 
-      mailbox = 'inbox', 
-      sortOrder = 'DESC', 
-      startFrom = 1,
-      limit = 10,
-      search = '',
-      fromDomain = '',
-      fromEmail = '',
-      to = ''
+    const {
+      email, appPassword,
+      mailbox = 'inbox', sortOrder = 'DESC',
+      startFrom = 1, limit = 10,
+      search = '', fromDomain = '', fromEmail = '', to = ''
     } = body;
 
     if (!email || !appPassword) {
-      return NextResponse.json(
-        { error: 'Email and app password are required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Email and app password are required' }, { status: 400 });
     }
 
-    const emails = await fetchEmails(
-      email, 
-      appPassword, 
-      mailbox, 
-      sortOrder, 
-      startFrom, 
-      limit,
-      search,
-      fromDomain,
-      fromEmail,
-      to
-    );
-    
-    return NextResponse.json({ 
-      emails,
-      total: emails.length,
-      mailbox
-    });
+    const emails = await fetchEmails(email, appPassword, mailbox, sortOrder, startFrom, limit, search, fromDomain, fromEmail, to);
+    return NextResponse.json({ emails, total: emails.length, mailbox });
   } catch (error: any) {
-    console.error('Error fetching emails:', error);
-    return NextResponse.json(
-      { error: error.message || 'Failed to fetch emails' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || 'Failed to fetch emails' }, { status: 500 });
   }
 }
 
-function extractFromInfo(fromHeader: string): { email: string; domain: string; name: string } {
-  try {
-    let name = '';
-    let email = '';
-    
-    // Extract name and email from "Name <email@domain.com>" format
-    const nameEmailMatch = fromHeader.match(/^(.+?)\s*<([^>]+)>$/);
-    if (nameEmailMatch) {
-      name = nameEmailMatch[1].replace(/['"]/g, '').trim();
-      email = nameEmailMatch[2].trim();
-    } else {
-      // Try to extract just email
-      const emailMatch = fromHeader.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-      email = emailMatch ? emailMatch[0] : fromHeader;
-    }
-    
-    const domain = email.split('@')[1] || '';
-    
-    return { 
-      email: email.toLowerCase(), 
-      domain: domain.toLowerCase(),
-      name: name || email.split('@')[0] || ''
-    };
-  } catch {
-    return { email: '', domain: '', name: '' };
-  }
-}
-
-// New function to extract Return-Path information
-function extractReturnPath(returnPathHeader: string): string {
-  try {
-    if (!returnPathHeader) return '';
-    
-    // Extract email from Return-Path (usually in format <email@domain.com>)
-    const returnPathMatch = returnPathHeader.match(/<([^>]+)>/);
-    if (returnPathMatch && returnPathMatch[1]) {
-      return returnPathMatch[1].toLowerCase().trim();
-    }
-    
-    // If no angle brackets, try to extract email directly
-    const emailMatch = returnPathHeader.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    return emailMatch ? emailMatch[0].toLowerCase().trim() : returnPathHeader.trim();
-  } catch {
-    return '';
-  }
-}
-
-function extractIPFromHeaders(headers: any): string {
-  console.log('🔍 ====== Starting IP Extraction ======');
-  console.log('📋 All Headers:', JSON.stringify(headers, null, 2));
-  
-  try {
-    // قائمة الحقول التي قد تحتوي على IP
-    const headerFields = [
-      'x-originating-ip',
-      'x-sender-ip',
-      'received',
-      'x-mailgun-sending-ip',
-      'x-postmark-spamcheck',
-      'x-spamcop-source-ip',
-      'x-remote-ip',
-      'x-sender',
-      'x-sender-ip-address'
-    ];
-
-    // تحقق من الحقول المباشرة
-    for (const field of headerFields) {
-      const headerValue = headers[field];
-      console.log(`🔎 Checking field '${field}':`, headerValue);
-      
-      if (headerValue) {
-        const headerStr = Array.isArray(headerValue) 
-          ? headerValue.join(' ') 
-          : headerValue.toString();
-        
-        console.log(`📝 Field '${field}' value:`, headerStr.substring(0, 200));
-        
-        // ابحث عن IPv4
-        const ipv4Match = headerStr.match(/\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/);
-        if (ipv4Match) {
-          console.log(`✅ Found potential IPv4 in '${field}':`, ipv4Match[0]);
-          if (isValidIP(ipv4Match[0])) {
-            console.log(`✅ Valid IP found:`, ipv4Match[0]);
-            return ipv4Match[0];
-          }
-        }
-      }
-    }
-
-    // استخرج من حقل Received (الأهم)
-    console.log('🔄 Checking Received headers specifically...');
-    const receivedHeaders = headers['received'];
-    
-    if (receivedHeaders) {
-      const receivedArray = Array.isArray(receivedHeaders) 
-        ? receivedHeaders 
-        : [receivedHeaders];
-      
-      console.log(`📨 Found ${receivedArray.length} Received header(s)`);
-      
-      // افحص كل received header
-      for (let i = 0; i < receivedArray.length; i++) {
-        const received = receivedArray[i];
-        const receivedStr = received.toString();
-        
-        console.log(`📬 Received[${i}]:`, receivedStr.substring(0, 300));
-        
-        // أنماط شائعة في Received headers
-        const patterns = [
-          { name: 'Pattern 1', regex: /from\s+.*?\[([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\]/i },
-          { name: 'Pattern 2', regex: /\(.*?\[([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\].*?\)/i },
-          { name: 'Pattern 3', regex: /from\s+.*?\(([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\)/i },
-          { name: 'Pattern 4', regex: /\[([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\]/ },
-          { name: 'Pattern 5', regex: /\b([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\b/ }
-        ];
-
-        for (const pattern of patterns) {
-          const match = receivedStr.match(pattern.regex);
-          if (match && match[1]) {
-            console.log(`🎯 ${pattern.name} matched IP:`, match[1]);
-            if (isValidIP(match[1])) {
-              // تحقق إذا كان IP خاص
-              if (isPrivateIP(match[1])) {
-                console.log(`⚠️ Skipping private IP:`, match[1]);
-                continue;
-              }
-              console.log(`✅ Valid public IP found:`, match[1]);
-              return match[1];
-            } else {
-              console.log(`❌ Invalid IP format:`, match[1]);
-            }
-          }
-        }
-      }
-    } else {
-      console.log('❌ No Received headers found');
-    }
-
-    console.log('⚠️ No IP found, returning Unknown');
-    return 'Unknown';
-  } catch (error) {
-    console.error('❌ Error extracting IP:', error);
-    return 'Unknown';
-  }
-}
-
-function isValidIP(ip: string): boolean {
-  console.log(`🔍 Validating IP: ${ip}`);
-  
-  // Basic IPv4 validation
-  if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip)) {
-    const parts = ip.split('.').map(Number);
-    const isValid = parts.every(part => part >= 0 && part <= 255);
-    console.log(`✓ IPv4 validation result: ${isValid}`);
-    return isValid;
-  }
-  
-  // Basic IPv6 validation (simplified)
-  if (/^[A-F0-9:]+$/i.test(ip)) {
-    console.log(`✓ IPv6 format detected`);
-    return true;
-  }
-  
-  console.log(`✗ Invalid IP format`);
-  return false;
-}
-
-function isPrivateIP(ip: string): boolean {
-  const parts = ip.split('.').map(Number);
-  
-  // 10.0.0.0/8
-  if (parts[0] === 10) return true;
-  
-  // 172.16.0.0/12
-  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-  
-  // 192.168.0.0/16
-  if (parts[0] === 192 && parts[1] === 168) return true;
-  
-  // 127.0.0.0/8 (localhost)
-  if (parts[0] === 127) return true;
-  
-  return false;
-}
-
-function extractToInfo(toHeader: string): string[] {
-  try {
-    if (!toHeader) return [];
-    
-    // Extract all email addresses from To field
-    const emailPattern = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-    const matches = toHeader.match(emailPattern);
-    
-    return matches ? matches.map(email => email.toLowerCase()) : [];
-  } catch {
-    return [];
-  }
-}
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function getHeaderValue(headers: any, key: string): string {
   try {
@@ -296,306 +69,234 @@ function getHeaderValue(headers: any, key: string): string {
     if (!value) return '';
     if (Array.isArray(value)) return value[0] || '';
     return value.toString();
-  } catch {
-    return '';
-  }
+  } catch { return ''; }
+}
+
+function extractFromInfo(fromHeader: string): { email: string; domain: string; name: string } {
+  try {
+    let name = '', emailAddr = '';
+    const m = fromHeader.match(/^(.+?)\s*<([^>]+)>$/);
+    if (m) { name = m[1].replace(/['"]/g, '').trim(); emailAddr = m[2].trim(); }
+    else {
+      const em = fromHeader.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+      emailAddr = em ? em[0] : fromHeader;
+    }
+    const domain = emailAddr.split('@')[1] || '';
+    return { email: emailAddr.toLowerCase(), domain: domain.toLowerCase(), name: name || emailAddr.split('@')[0] || '' };
+  } catch { return { email: '', domain: '', name: '' }; }
+}
+
+function extractReturnPath(h: string): string {
+  try {
+    if (!h) return '';
+    const m = h.match(/<([^>]+)>/);
+    if (m?.[1]) return m[1].toLowerCase().trim();
+    const em = h.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    return em ? em[0].toLowerCase().trim() : h.trim();
+  } catch { return ''; }
+}
+
+function extractToInfo(toHeader: string): string[] {
+  try {
+    if (!toHeader) return [];
+    const m = toHeader.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g);
+    return m ? m.map(e => e.toLowerCase()) : [];
+  } catch { return []; }
+}
+
+function isValidIP(ip: string): boolean {
+  if (/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip))
+    return ip.split('.').map(Number).every(p => p >= 0 && p <= 255);
+  return /^[A-F0-9:]+$/i.test(ip);
+}
+
+function isPrivateIP(ip: string): boolean {
+  const p = ip.split('.').map(Number);
+  return p[0] === 10 || (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 192 && p[1] === 168) || p[0] === 127;
+}
+
+function extractIPFromHeaders(headers: any): string {
+  try {
+    for (const field of ['x-originating-ip','x-sender-ip','x-mailgun-sending-ip','x-remote-ip','x-sender-ip-address']) {
+      const val = headers[field];
+      if (val) {
+        const str = Array.isArray(val) ? val[0] : val.toString();
+        const m = str.match(/\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b/);
+        if (m && isValidIP(m[0]) && !isPrivateIP(m[0])) return m[0];
+      }
+    }
+    const received = headers['received'];
+    if (received) {
+      const arr = Array.isArray(received) ? received : [received];
+      const patterns = [
+        /from\s+.*?\[([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\]/i,
+        /\(.*?\[([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\].*?\)/i,
+        /from\s+.*?\(([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\)/i,
+        /\[([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\]/,
+        /\b([0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3})\b/,
+      ];
+      for (const r of arr) {
+        const str = r.toString();
+        for (const pat of patterns) {
+          const m = str.match(pat);
+          if (m?.[1] && isValidIP(m[1]) && !isPrivateIP(m[1])) return m[1];
+        }
+      }
+    }
+    return 'Unknown';
+  } catch { return 'Unknown'; }
 }
 
 function extractAuthenticationResults(headers: any): { spf: string; dkim: string; dmarc: string } {
   try {
-    // Get authentication-results header
-    const authResults = getHeaderValue(headers, 'authentication-results');
-    
-    let spfStatus = 'none';
-    let dkimStatus = 'none';
-    let dmarcStatus = 'none';
-    
-    if (authResults) {
-      console.log('🔐 Authentication Results:', authResults);
-      
-      // Extract SPF status
-      const spfMatch = authResults.match(/spf=([a-z]+)/i);
-      if (spfMatch) spfStatus = spfMatch[1].toLowerCase();
-      
-      // Extract DKIM status
-      const dkimMatch = authResults.match(/dkim=([a-z]+)/i);
-      if (dkimMatch) dkimStatus = dkimMatch[1].toLowerCase();
-      
-      // Extract DMARC status
-      const dmarcMatch = authResults.match(/dmarc=([a-z]+)/i);
-      if (dmarcMatch) dmarcStatus = dmarcMatch[1].toLowerCase();
+    const auth = getHeaderValue(headers, 'authentication-results');
+    let spf = auth.match(/spf=([a-z]+)/i)?.[1]?.toLowerCase()  ?? 'none';
+    const dkim= auth.match(/dkim=([a-z]+)/i)?.[1]?.toLowerCase() ?? 'none';
+    const dmarc=auth.match(/dmarc=([a-z]+)/i)?.[1]?.toLowerCase() ?? 'none';
+    if (spf === 'none') {
+      const rspf = getHeaderValue(headers, 'received-spf').toLowerCase();
+      if (rspf.includes('pass')) spf = 'pass';
+      else if (rspf.includes('softfail')) spf = 'softfail';
+      else if (rspf.includes('fail')) spf = 'fail';
+      else if (rspf.includes('neutral')) spf = 'neutral';
     }
-    
-    // Also check received-spf header
-    const receivedSpf = getHeaderValue(headers, 'received-spf');
-    if (receivedSpf && spfStatus === 'none') {
-      if (receivedSpf.toLowerCase().includes('pass')) spfStatus = 'pass';
-      else if (receivedSpf.toLowerCase().includes('fail')) spfStatus = 'fail';
-      else if (receivedSpf.toLowerCase().includes('softfail')) spfStatus = 'softfail';
-      else if (receivedSpf.toLowerCase().includes('neutral')) spfStatus = 'neutral';
-    }
-    
-    console.log(`✅ SPF: ${spfStatus}, DKIM: ${dkimStatus}, DMARC: ${dmarcStatus}`);
-    
-    return { spf: spfStatus, dkim: dkimStatus, dmarc: dmarcStatus };
-  } catch (error) {
-    console.error('Error extracting authentication results:', error);
-    return { spf: 'none', dkim: 'none', dmarc: 'none' };
-  }
+    return { spf, dkim, dmarc };
+  } catch { return { spf: 'none', dkim: 'none', dmarc: 'none' }; }
 }
 
+// ─── Core fetch ─────────────────────────────────────────────────────────────
+
 async function fetchEmails(
-  email: string,
-  appPassword: string,
-  mailbox: 'inbox' | 'spam',
-  sortOrder: 'ASC' | 'DESC',
-  startFrom: number,
-  limit: number,
-  search: string,
-  fromDomain: string,
-  fromEmail: string,
-  to: string
+  email: string, appPassword: string,
+  mailbox: 'inbox' | 'spam', sortOrder: 'ASC' | 'DESC',
+  startFrom: number, limit: number,
+  search: string, fromDomain: string, fromEmail: string, to: string
 ): Promise<EmailData[]> {
   return new Promise((resolve, reject) => {
     const imap = new Imap({
-      user: email,
-      password: appPassword,
-      host: 'imap.gmail.com',
-      port: 993,
-      tls: true,
-      tlsOptions: { rejectUnauthorized: false },
-      authTimeout: 10000
+      user: email, password: appPassword,
+      host: 'imap.gmail.com', port: 993,
+      tls: true, tlsOptions: { rejectUnauthorized: false },
+      authTimeout: 10000, keepalive: false,
     });
 
-    const emails: EmailData[] = [];
+    const results: EmailData[] = [];
 
     imap.once('ready', () => {
-      // Gmail uses special names for mailboxes
       const gmailMailbox = mailbox === 'spam' ? '[Gmail]/Spam' : 'INBOX';
-      
-      imap.openBox(gmailMailbox, false, (err, box) => {
-        if (err) {
-          reject(new Error(`Failed to open mailbox: ${err.message}`));
-          return;
-        }
 
-        const totalMessages = box.messages.total;
-        if (totalMessages === 0) {
-          imap.end();
-          resolve([]);
-          return;
-        }
+      // Read-only: faster, won't mark messages as seen
+      imap.openBox(gmailMailbox, true, (err, box) => {
+        if (err) { reject(new Error(`Failed to open mailbox: ${err.message}`)); return; }
 
-        // Calculate message sequence numbers
-        let startSeq = Math.max(1, startFrom);
-        let endSeq = Math.min(totalMessages, startFrom + limit - 1);
+        const total = box.messages.total;
+        if (total === 0) { imap.end(); resolve([]); return; }
 
-        // For DESC order (newest first), we need to reverse
+        let startSeq: number, endSeq: number;
         if (sortOrder === 'DESC') {
-          startSeq = Math.max(1, totalMessages - startFrom - limit + 2);
-          endSeq = totalMessages - startFrom + 1;
+          startSeq = Math.max(1, total - startFrom - limit + 2);
+          endSeq   = total - startFrom + 1;
+        } else {
+          startSeq = Math.max(1, startFrom);
+          endSeq   = Math.min(total, startFrom + limit - 1);
         }
+        startSeq = Math.max(1, Math.min(startSeq, total));
+        endSeq   = Math.max(startSeq, Math.min(endSeq, total));
 
-        // Ensure valid range
-        startSeq = Math.max(1, Math.min(startSeq, totalMessages));
-        endSeq = Math.max(startSeq, Math.min(endSeq, totalMessages));
-
-        const fetchOptions = {
-          bodies: ['HEADER', 'TEXT'],
-          struct: true
-        };
-
-        const fetch = imap.seq.fetch(`${startSeq}:${endSeq}`, fetchOptions);
+        // Fetch ONLY the specific header fields we need — no body download
+        const fields = 'FROM TO SUBJECT DATE RECEIVED RETURN-PATH AUTHENTICATION-RESULTS RECEIVED-SPF X-ORIGINATING-IP X-SENDER-IP X-MAILGUN-SENDING-IP FEEDBACK-ID LIST-ID CONTENT-TYPE MESSAGE-ID SENDER LIST-UNSUBSCRIBE MIME-VERSION';
+        const fetch = imap.seq.fetch(`${startSeq}:${endSeq}`, {
+          bodies: [`HEADER.FIELDS (${fields})`],
+          struct: false,
+        });
 
         let processedCount = 0;
         const totalToProcess = endSeq - startSeq + 1;
 
-        fetch.on('message', (msg) => {
-          let emailBuffer = '';
-          let headers: any = null;
-          let emailData: Partial<EmailData> = {};
+        const finish = () => {
+          if (sortOrder === 'ASC')
+            results.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          else
+            results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          resolve(results);
+        };
 
-          msg.on('body', (stream, info) => {
-            let buffer = '';
-            stream.on('data', (chunk) => {
-              buffer += chunk.toString('utf8');
-            });
+        fetch.on('message', (msg) => {
+          let headers: any = null;
+          let uid = '';
+          let date: Date = new Date();
+
+          msg.on('body', (stream) => {
+            let buf = '';
+            stream.on('data', (chunk) => { buf += chunk.toString('utf8'); });
             stream.once('end', () => {
-              if (info.which === 'HEADER') {
-                try {
-                  headers = Imap.parseHeader(buffer);
-                } catch (e) {
-                  console.error('Error parsing headers:', e);
-                }
-              }
-              emailBuffer += buffer;
+              try { headers = Imap.parseHeader(buf); } catch { /* skip */ }
             });
           });
 
           msg.once('attributes', (attrs) => {
-            emailData.uid = attrs.uid.toString();
-            emailData.date = attrs.date;
+            uid  = attrs.uid.toString();
+            date = attrs.date ?? new Date();
           });
 
-          msg.once('end', async () => {
+          msg.once('end', () => {
             try {
-              if (!headers) {
-                throw new Error('No headers found');
-              }
+              if (headers) {
+                const fromHeader  = getHeaderValue(headers, 'from');
+                const toHeader    = Array.isArray(headers.to) ? headers.to.join(', ') : (headers.to || '');
+                const subject     = getHeaderValue(headers, 'subject') || '(No Subject)';
+                const returnPath  = extractReturnPath(getHeaderValue(headers, 'return-path'));
+                const { email: fromEmailAddr, domain: fromDomainAddr, name: fromNameStr } = extractFromInfo(fromHeader);
+                const toEmails    = extractToInfo(toHeader);
+                const ip          = extractIPFromHeaders(headers);
+                const auth        = extractAuthenticationResults(headers);
 
-              console.log('\n\n========================================');
-              console.log('📧 Processing Email UID:', emailData.uid);
-              console.log('========================================\n');
-
-              // Parse email data
-              const fromHeader = getHeaderValue(headers, 'from');
-              const toHeader = headers.to ? headers.to.join(', ') : '';
-              const subject = getHeaderValue(headers, 'subject') || '(No Subject)';
-              
-              // Extract Return-Path
-              const returnPathHeader = getHeaderValue(headers, 'return-path');
-              const returnPath = extractReturnPath(returnPathHeader);
-              
-              console.log('📨 Subject:', subject);
-              console.log('📤 From:', fromHeader);
-              console.log('↩️ Return-Path:', returnPathHeader, '→', returnPath);
-              
-              const { email: fromEmailAddr, domain: fromDomainAddr, name: fromNameStr } = extractFromInfo(fromHeader);
-              const toEmails = extractToInfo(toHeader);
-              
-              // Extract IP address
-              const ip = extractIPFromHeaders(headers);
-              
-              // Extract authentication status (SPF, DKIM, DMARC)
-              const authStatus = extractAuthenticationResults(headers);
-              
-              // Extract additional header fields
-              const feedbackId = getHeaderValue(headers, 'feedback-id');
-              const listId = getHeaderValue(headers, 'list-id');
-              const contentType = getHeaderValue(headers, 'content-type');
-              const messageId = getHeaderValue(headers, 'message-id');
-              const received = getHeaderValue(headers, 'received');
-              const sender = getHeaderValue(headers, 'sender');
-              const listUnsubscribe = getHeaderValue(headers, 'list-unsubscribe');
-              const mimeVersion = getHeaderValue(headers, 'mime-version');
-              
-              console.log('🌐 Final IP Result:', ip);
-              console.log('🔐 Auth Status:', authStatus);
-              console.log('========================================\n\n');
-              
-              // Get preview text
-              let preview = '';
-              try {
-                const parsed = await simpleParser(emailBuffer);
-                preview = parsed.text?.substring(0, 200) || (parsed.html || "").replace(/<[^>]*>/g, "").replace(/<[^>]*>/g, '').substring(0, 200) || '';
-              } catch (parseError) {
-                preview = 'Unable to parse email content';
-              }
-
-              // Apply filters
-              let shouldInclude = true;
-              
-              if (search) {
-                const searchLower = search.toLowerCase();
-                shouldInclude = 
-                  subject.toLowerCase().includes(searchLower) ||
-                  fromHeader.toLowerCase().includes(searchLower) ||
-                  fromEmailAddr.toLowerCase().includes(searchLower) ||
-                  preview.toLowerCase().includes(searchLower) ||
-                  returnPath.toLowerCase().includes(searchLower); // Also search in return path
-              }
-              
-              if (fromDomain && fromDomainAddr.toLowerCase() !== fromDomain.toLowerCase()) {
-                shouldInclude = false;
-              }
-              
-              if (fromEmail && fromEmailAddr.toLowerCase() !== fromEmail.toLowerCase()) {
-                shouldInclude = false;
-              }
-              
-              if (to && !toEmails.some(e => e.includes(to.toLowerCase()))) {
-                shouldInclude = false;
-              }
-
-              if (shouldInclude) {
-                emails.push({
-                  uid: emailData.uid!,
-                  subject,
-                  from: fromHeader,
-                  fromEmail: fromEmailAddr,
-                  fromDomain: fromDomainAddr,
-                  fromName: fromNameStr,
-                  to: toHeader,
-                  date: emailData.date!,
-                  preview,
-                  mailbox,
-                  ip,
-                  spfStatus: authStatus.spf,
-                  dkimStatus: authStatus.dkim,
-                  dmarcStatus: authStatus.dmarc,
-                  feedbackId,
-                  listId,
-                  contentType,
-                  messageId,
-                  received,
-                  sender,
-                  listUnsubscribe,
-                  mimeVersion,
-                  returnPath: returnPath // Add Return-Path to the email data
-                } as EmailData);
-              }
-
-              processedCount++;
-              
-              // When all messages are processed
-              if (processedCount === totalToProcess) {
-                imap.end();
-                
-                // Sort emails based on requested order
-                if (sortOrder === 'ASC') {
-                  emails.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                } else {
-                  emails.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                let include = true;
+                if (search) {
+                  const s = search.toLowerCase();
+                  include = subject.toLowerCase().includes(s)
+                    || fromHeader.toLowerCase().includes(s)
+                    || fromEmailAddr.toLowerCase().includes(s)
+                    || returnPath.toLowerCase().includes(s);
                 }
-                
-                resolve(emails);
+                if (include && fromDomain && fromDomainAddr.toLowerCase() !== fromDomain.toLowerCase()) include = false;
+                if (include && fromEmail  && fromEmailAddr.toLowerCase()  !== fromEmail.toLowerCase())  include = false;
+                if (include && to && !toEmails.some(e => e.includes(to.toLowerCase()))) include = false;
+
+                if (include) {
+                  results.push({
+                    uid, subject, from: fromHeader,
+                    fromEmail: fromEmailAddr, fromDomain: fromDomainAddr, fromName: fromNameStr,
+                    to: toHeader, date, preview: '', mailbox, ip,
+                    spfStatus: auth.spf, dkimStatus: auth.dkim, dmarcStatus: auth.dmarc,
+                    feedbackId:    getHeaderValue(headers, 'feedback-id'),
+                    listId:        getHeaderValue(headers, 'list-id'),
+                    contentType:   getHeaderValue(headers, 'content-type'),
+                    messageId:     getHeaderValue(headers, 'message-id'),
+                    received:      getHeaderValue(headers, 'received'),
+                    sender:        getHeaderValue(headers, 'sender'),
+                    listUnsubscribe: getHeaderValue(headers, 'list-unsubscribe'),
+                    mimeVersion:   getHeaderValue(headers, 'mime-version'),
+                    returnPath,
+                  });
+                }
               }
-            } catch (parseError) {
-              console.error('Error processing email:', parseError);
-              processedCount++;
-              
-              if (processedCount === totalToProcess) {
-                imap.end();
-                resolve(emails);
-              }
-            }
+            } catch { /* skip bad email */ }
+
+            processedCount++;
+            if (processedCount === totalToProcess) { imap.end(); finish(); }
           });
         });
 
-        fetch.once('error', (err) => {
-          reject(new Error(`IMAP fetch error: ${err.message}`));
-        });
-
+        fetch.once('error', (err) => reject(new Error(`IMAP fetch error: ${err.message}`)));
         fetch.once('end', () => {
-          // In case we didn't get all messages
-          if (processedCount < totalToProcess) {
-            setTimeout(() => {
-              imap.end();
-              resolve(emails);
-            }, 5000);
-          }
+          if (processedCount < totalToProcess)
+            setTimeout(() => { imap.end(); finish(); }, 3000);
         });
       });
     });
 
-    imap.once('error', (err: Error) => {
-      reject(new Error(`IMAP connection error: ${err.message}`));
-    });
-
-    imap.once('end', () => {
-      console.log('IMAP connection ended');
-    });
-
+    imap.once('error', (err: Error) => reject(new Error(`IMAP connection error: ${err.message}`)));
     imap.connect();
   });
 }
