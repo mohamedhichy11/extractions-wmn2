@@ -57,18 +57,80 @@ export default function EmailTableEnhanced({
   visibleColumns,
   darkMode = false
 }: EmailTableProps) {
-  const [selectedCell, setSelectedCell] = React.useState<{ uid: string; col: string } | null>(null);
+  // Multi-cell selection: Set of "uid::col" keys
+  const [selectedCells, setSelectedCells] = React.useState<Set<string>>(new Set());
+  const cellKey = (uid: string, col: string) => `${uid}::${col}`;
 
   const handleCellClick = (e: React.MouseEvent, uid: string, col: string, rowIndex: number) => {
     e.stopPropagation();
-    setSelectedCell(prev => prev?.uid === uid && prev?.col === col ? null : { uid, col });
+    const key = cellKey(uid, col);
+
+    if (e.ctrlKey || e.metaKey) {
+      // CTRL: toggle this cell, keep others
+      setSelectedCells(prev => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key); else next.add(key);
+        return next;
+      });
+    } else if (e.shiftKey) {
+      // SHIFT: keep existing, add this cell too
+      setSelectedCells(prev => {
+        const next = new Set(prev);
+        next.add(key);
+        return next;
+      });
+    } else {
+      // Normal click: select only this cell
+      setSelectedCells(new Set([key]));
+    }
+
     onSelectEmail(uid, rowIndex, e);
   };
 
   const cellCls = (uid: string, col: string) =>
-    selectedCell?.uid === uid && selectedCell?.col === col
+    selectedCells.has(cellKey(uid, col))
       ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]'
       : '';
+
+  // Ctrl+C: copy all selected cells' text values
+  React.useEffect(() => {
+    const handleCopy = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key !== 'c') return;
+      if (selectedCells.size === 0) return;
+      e.preventDefault();
+
+      // Build a map of uid -> email for quick lookup
+      const emailMap = new Map(emails.map(em => [em.uid, em]));
+
+      // Collect values grouped by row (uid) then col, preserving row order
+      const rowOrder: string[] = [];
+      const rowCols: Map<string, string[]> = new Map();
+
+      selectedCells.forEach(key => {
+        const [uid, col] = key.split('::');
+        if (!rowCols.has(uid)) { rowCols.set(uid, []); rowOrder.push(uid); }
+        rowCols.get(uid)!.push(col);
+      });
+
+      const getCellValue = (em: any, col: string): string => {
+        const v = (em as any)[col];
+        if (v === undefined || v === null) return '';
+        return String(v);
+      };
+
+      const lines = rowOrder.map(uid => {
+        const em = emailMap.get(uid);
+        if (!em) return '';
+        const cols = rowCols.get(uid)!;
+        return cols.map(col => getCellValue(em, col)).join('\t');
+      });
+
+      navigator.clipboard.writeText(lines.join('\n')).catch(() => {});
+    };
+
+    window.addEventListener('keydown', handleCopy);
+    return () => window.removeEventListener('keydown', handleCopy);
+  }, [selectedCells, emails]);
 
   if (emails.length === 0) {
     return (
