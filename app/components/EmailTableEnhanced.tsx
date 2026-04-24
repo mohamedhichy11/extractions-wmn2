@@ -1,4 +1,5 @@
 'use client';
+import { useState } from 'react';
 
 interface Email {
   uid: string;
@@ -56,6 +57,19 @@ export default function EmailTableEnhanced({
   visibleColumns,
   darkMode = false
 }: EmailTableProps) {
+  const [selectedCell, setSelectedCell] = useState<{ uid: string; col: string } | null>(null);
+
+  const handleCellClick = (e: React.MouseEvent, uid: string, col: string, rowIndex: number) => {
+    e.stopPropagation();
+    setSelectedCell(prev => prev?.uid === uid && prev?.col === col ? null : { uid, col });
+    onSelectEmail(uid, rowIndex, e);
+  };
+
+  const cellCls = (uid: string, col: string) =>
+    selectedCell?.uid === uid && selectedCell?.col === col
+      ? 'outline outline-2 outline-blue-500 outline-offset-[-2px]'
+      : '';
+
   if (emails.length === 0) {
     return (
       <div className="text-center py-12">
@@ -535,7 +549,7 @@ export default function EmailTableEnhanced({
               onClick={(e) => onSelectEmail(email.uid, index, e)}
             >
               {isColumnVisible('checkbox') && (
-                <td className="px-4 py-4">
+                <td className="px-4 py-4`}>
                   <div className="flex items-center justify-center">
                     <input
                       type="checkbox"
@@ -556,7 +570,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('ip') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'ip', index)} className={`${cellCls(email.uid, 'ip')} px-6 py-4`}>
                   <div className={`inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-mono font-semibold shadow-sm ${
                     email.ip === 'N/A' || email.ip === 'Unknown'
                       ? darkMode
@@ -584,7 +598,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('domain') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'domain', index)} className={`${cellCls(email.uid, 'domain')} px-6 py-4`}>
                   <div className="group relative">
                     <div className="flex items-center gap-2">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -615,7 +629,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('fromDomain') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'fromDomain', index)} className={`${cellCls(email.uid, 'fromDomain')} px-6 py-4`}>
                   <div className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-slate-600'}`}>
                     {email.fromDomain}
                   </div>
@@ -623,7 +637,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('fromEmail') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'fromEmail', index)} className={`${cellCls(email.uid, 'fromEmail')} px-6 py-4`}>
                   <div className="group relative">
                     <div className="flex items-center gap-2">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -654,7 +668,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('fromName') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'fromName', index)} className={`${cellCls(email.uid, 'fromName')} px-6 py-4`}>
                   <div className="group relative">
                     <div className="flex items-center gap-2">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -685,7 +699,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('to') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'to', index)} className={`${cellCls(email.uid, 'to')} px-6 py-4`}>
                   <div className="group relative">
                     <div className="flex items-center gap-2">
                       <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
@@ -716,7 +730,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('spfStatus') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'spfStatus', index)} className={`${cellCls(email.uid, 'spfStatus')} px-6 py-4`}>
                   <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
                     email.spfStatus === 'pass' 
                       ? 'bg-green-100 text-green-800 border border-green-300' 
@@ -736,7 +750,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('dkimStatus') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'dkimStatus', index)} className={`${cellCls(email.uid, 'dkimStatus')} px-6 py-4`}>
                   <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
                     email.dkimStatus === 'pass' 
                       ? 'bg-green-100 text-green-800 border border-green-300' 
@@ -754,7 +768,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('dmarcStatus') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'dmarcStatus', index)} className={`${cellCls(email.uid, 'dmarcStatus')} px-6 py-4`}>
                   <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
                     email.dmarcStatus === 'pass' 
                       ? 'bg-green-100 text-green-800 border border-green-300' 
@@ -774,7 +788,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('feedbackId') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'feedbackId', index)} className={`${cellCls(email.uid, 'feedbackId')} px-6 py-4`}>
                   <span className={`text-sm truncate max-w-[150px] block ${
                     darkMode ? 'text-gray-300' : 'text-gray-600'
                   }`}>
@@ -784,7 +798,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('listId') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'listId', index)} className={`${cellCls(email.uid, 'listId')} px-6 py-4`}>
                   <div className="group relative">
                     <span className={`text-sm truncate max-w-[150px] block ${
                       darkMode ? 'text-gray-300' : 'text-gray-600'
@@ -806,7 +820,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('contentType') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'contentType', index)} className={`${cellCls(email.uid, 'contentType')} px-6 py-4`}>
                   <div className="group relative">
                     <span className={`text-sm truncate max-w-[150px] block ${
                       darkMode ? 'text-gray-300' : 'text-gray-600'
@@ -828,7 +842,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('messageId') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'messageId', index)} className={`${cellCls(email.uid, 'messageId')} px-6 py-4`}>
                   <div className="group relative">
                     <span className={`text-xs font-mono truncate max-w-[200px] block ${
                       darkMode ? 'text-gray-400' : 'text-gray-600'
@@ -850,7 +864,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('received') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'received', index)} className={`${cellCls(email.uid, 'received')} px-6 py-4`}>
                   <div className="group relative">
                     <span className={`text-xs truncate max-w-[200px] block ${
                       darkMode ? 'text-gray-400' : 'text-gray-600'
@@ -872,7 +886,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('sender') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'sender', index)} className={`${cellCls(email.uid, 'sender')} px-6 py-4`}>
                   <div className="group relative">
                     <span className={`text-sm truncate max-w-[150px] block ${
                       darkMode ? 'text-gray-300' : 'text-gray-600'
@@ -894,7 +908,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('returnPath') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'returnPath', index)} className={`${cellCls(email.uid, 'returnPath')} px-6 py-4`}>
                   <div className="group relative">
                     <span className={`text-sm truncate max-w-[150px] block ${
                       darkMode ? 'text-gray-300' : 'text-gray-600'
@@ -916,7 +930,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('listUnsubscribe') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'listUnsubscribe', index)} className={`${cellCls(email.uid, 'listUnsubscribe')} px-6 py-4`}>
                   <div className="group relative">
                     <span className={`text-xs truncate max-w-[150px] block ${
                       darkMode ? 'text-gray-400' : 'text-gray-600'
@@ -938,7 +952,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('mimeVersion') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'mimeVersion', index)} className={`${cellCls(email.uid, 'mimeVersion')} px-6 py-4`}>
                   <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                     {email.mimeVersion || 'N/A'}
                   </span>
@@ -946,7 +960,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('subject') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'subject', index)} className={`${cellCls(email.uid, 'subject')} px-6 py-4`}>
                   <div className="group relative">
                     <span className={`text-sm font-medium truncate max-w-[200px] block ${
                       darkMode ? 'text-gray-200' : 'text-gray-900'
@@ -966,7 +980,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('preview') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'preview', index)} className={`${cellCls(email.uid, 'preview')} px-6 py-4`}>
                   <div className="group relative">
                     <span className={`text-sm truncate max-w-[250px] block ${
                       darkMode ? 'text-gray-300' : 'text-gray-600'
@@ -986,7 +1000,7 @@ export default function EmailTableEnhanced({
               )}
               
               {isColumnVisible('date') && (
-                <td className="px-6 py-4">
+                <td onClick={(e) => handleCellClick(e, email.uid, 'date', index)} className={`${cellCls(email.uid, 'date')} px-6 py-4`}>
                   <div className="flex items-center gap-2">
                     <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
                       darkMode 
