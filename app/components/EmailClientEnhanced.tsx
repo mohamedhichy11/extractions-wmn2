@@ -60,6 +60,7 @@ export default function EmailClientEnhanced() {
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const columnSelectorRef = useRef<HTMLDivElement>(null);
+  const lastSelectedIndexRef = useRef<number | null>(null);
 
   // Column configuration
   const [columns, setColumns] = useState<ColumnConfig[]>([
@@ -156,6 +157,7 @@ export default function EmailClientEnhanced() {
     setError('');
     setCopyStatus('');
     setSelectedEmails(new Set());
+    lastSelectedIndexRef.current = null;
 
     try {
       const response = await fetch('/api/emails', {
@@ -365,14 +367,37 @@ export default function EmailClientEnhanced() {
     copyToClipboard(result || 'No data found', 'IP-grouped Data');
   };
 
-  const toggleEmailSelection = (uid: string) => {
-    const newSelected = new Set(selectedEmails);
-    if (newSelected.has(uid)) {
-      newSelected.delete(uid);
+  const toggleEmailSelection = (uid: string, index: number, event: React.MouseEvent) => {
+    if (event.shiftKey && lastSelectedIndexRef.current !== null) {
+      // Shift+Click: select range between lastSelectedIndex and current index
+      const start = Math.min(lastSelectedIndexRef.current, index);
+      const end = Math.max(lastSelectedIndexRef.current, index);
+      const newSelected = new Set(selectedEmails);
+      for (let i = start; i <= end; i++) {
+        newSelected.add(emails[i].uid);
+      }
+      setSelectedEmails(newSelected);
+    } else if (event.ctrlKey || event.metaKey) {
+      // Ctrl/Cmd+Click: toggle individual row without clearing others
+      const newSelected = new Set(selectedEmails);
+      if (newSelected.has(uid)) {
+        newSelected.delete(uid);
+      } else {
+        newSelected.add(uid);
+      }
+      setSelectedEmails(newSelected);
+      lastSelectedIndexRef.current = index;
     } else {
-      newSelected.add(uid);
+      // Plain click: select only this row (clear previous selection)
+      if (selectedEmails.size === 1 && selectedEmails.has(uid)) {
+        // Clicking an already-solo-selected row deselects it
+        setSelectedEmails(new Set());
+        lastSelectedIndexRef.current = null;
+      } else {
+        setSelectedEmails(new Set([uid]));
+        lastSelectedIndexRef.current = index;
+      }
     }
-    setSelectedEmails(newSelected);
   };
 
   const selectAllEmails = () => {
