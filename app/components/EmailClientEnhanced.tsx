@@ -169,7 +169,7 @@ export default function EmailClientEnhanced() {
           mailbox,
           sortOrder,
           startFrom: Math.max(1, parseInt(startFrom as any) || 1),
-          limit: Math.min(100, Math.max(1, parseInt(limit as any) || 10)),
+          limit: Math.max(1, parseInt(limit as any) || 10),
           search: searchTerm.trim(),
           fromDomain: filterFromDomain.trim(),
           fromEmail: filterFromEmail.trim(),
@@ -796,7 +796,7 @@ export default function EmailClientEnhanced() {
                       value={limit}
                       onChange={(e) => setLimit(parseInt(e.target.value) || 10)}
                       min="1"
-                      max="100"
+                      max="10000"
                       className={`w-full px-4 py-3 rounded-xl transition-all duration-300 shadow-sm ${
                         darkMode 
                           ? 'bg-gray-700 border-gray-600 text-white focus:ring-blue-500 focus:border-blue-500' 
