@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import React from 'react';
 
 interface Email {
   uid: string;
@@ -57,7 +57,7 @@ export default function EmailTableEnhanced({
   visibleColumns,
   darkMode = false
 }: EmailTableProps) {
-  const [selectedCell, setSelectedCell] = useState<{ uid: string; col: string } | null>(null);
+  const [selectedCell, setSelectedCell] = React.useState<{ uid: string; col: string } | null>(null);
 
   const handleCellClick = (e: React.MouseEvent, uid: string, col: string, rowIndex: number) => {
     e.stopPropagation();
@@ -549,7 +549,7 @@ export default function EmailTableEnhanced({
               onClick={(e) => onSelectEmail(email.uid, index, e)}
             >
               {isColumnVisible('checkbox') && (
-                <td className="px-4 py-4`}>
+                <td className="px-4 py-4">
                   <div className="flex items-center justify-center">
                     <input
                       type="checkbox"
