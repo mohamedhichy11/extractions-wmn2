@@ -1107,7 +1107,7 @@ export default function EmailClientEnhanced() {
 
               {/* Telegram link */}
               <a
-                href="https://t.me/Hichy33"
+                href="https://t.me/hichymed444"
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`mt-2 inline-flex items-center gap-2 text-sm font-medium transition-colors ${
@@ -1123,7 +1123,7 @@ export default function EmailClientEnhanced() {
                 >
                   <path d="M9.04 15.84 8.9 19.8c.51 0 .73-.22 1-.48l2.4-2.28 4.97 3.64c.91.5 1.56.24 1.8-.84l3.26-15.3c.33-1.54-.56-2.14-1.45-1.8L1.63 9.58c-1.5.58-1.48 1.42-.27 1.8l4.6 1.44L17.8 5.3c.56-.37 1.07-.17.65.2" />
                 </svg>
-                @Hichy33
+                @hichymed444
               </a>
             </div>
 
